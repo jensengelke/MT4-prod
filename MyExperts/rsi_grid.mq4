@@ -27,6 +27,7 @@ input double tpPoints = 400;
 input double martingaleFactor = 3.0;
 input double martingaleMinDistance = 100;
 input double increaseSizeEvery = 1500.0;
+input double emergencyExit = 0.6;
 
 CArrayInt longTickets;
 CArrayInt shortTickets;
@@ -82,6 +83,21 @@ void OnTick()
    if (Time[0] == lastTradeTime) return;
    
    lastTradeTime = Time[0];
+   
+   if (AccountEquity() / AccountBalance() < emergencyExit) { 
+      Print("Emergency");
+      for (int i=shortTickets.Total(); i>=0; i--) {
+         if (OrderSelect(shortTickets.At(i),SELECT_BY_TICKET)) {
+            OrderClose(OrderTicket(),OrderLots(),Bid,1000,clrRed);
+         }
+      }
+      for (int i=longTickets.Total(); i>=0; i--) {
+         if (OrderSelect(longTickets.At(i),SELECT_BY_TICKET)) {
+            OrderClose(OrderTicket(),OrderLots(),Ask,1000,clrRed);
+         }
+      }
+      
+   }
    
    currentLots = NormalizeDouble(AccountEquity() / increaseSizeEvery * lots,_Digits);
    if (currentLots<lots) currentLots = lots;
@@ -144,6 +160,8 @@ int sell() {
             currentCountOfOpenPositions++;
             currentSizeOfOpenPositions+=OrderLots();
             pointsToRecover += ((ask-OrderOpenPrice())*(OrderLots()/currentLots))/_Point;
+            pointsToRecover += OrderSwap()/MarketInfo(OrderSymbol(),MODE_TICKVALUE);
+            pointsToRecover += OrderCommission()/MarketInfo(OrderSymbol(),MODE_TICKVALUE);
             if (tracelevel >= 2) {
                PrintFormat("SELL: thisEntry=%.5f, orderEntry=%.5f, orderSize=%.2f, currentLots=%.2f, pointsToRecover=%.5f",
                   entry,
@@ -231,6 +249,8 @@ int buy() {
             currentCountOfOpenPositions++;
             currentSizeOfOpenPositions+=OrderLots();
             pointsToRecover += ((OrderOpenPrice()-bid)*(OrderLots()/currentLots))/_Point;
+            pointsToRecover += OrderSwap()/MarketInfo(OrderSymbol(),MODE_TICKVALUE);
+            pointsToRecover += OrderCommission()/MarketInfo(OrderSymbol(),MODE_TICKVALUE);
             if (tracelevel >=2) {
                PrintFormat("BUY: thisEntry=%.5f, orderEntry=%.5f, orderSize=%.2f, currentLots=%.2f, pointsToRecover=%.5f",
                   entry,
