@@ -1,0 +1,17 @@
+label0=
+myMagic=3
+tracelevel=0
+chartLabel=RSI grid
+label1=
+rsiPeriod=6
+rsiLowThreshold=15.0
+rsiHighThreshold=85.0
+label2=
+lots=0.01
+maxLots=0.33
+tpPoints=500.0
+martingaleFactor=2.5
+martingaleMinDistance=150.0
+increaseSizeEvery=1000.0
+emergencyExitRatio=0.5
+pyramide=true
