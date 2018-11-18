@@ -37,7 +37,7 @@ input double rsiDistance = 15.0; //RSI threshold in % from upper and lower end
 
 input string label2 = ""; //+--- money management ---+
 input double lots = 0.01;
-input double maxLots = 2.00;
+input int    maxPositions = 6; //max number of positions
 input double tpPoints = 400;
 input double martingaleFactor = 2.5;
 input double martingaleMinDistance = 100;
@@ -56,7 +56,6 @@ static CArrayInt shortTickets;
 bool aborted = false;
 
 static double currentLots = lots;
-static double currentMaxLots = maxLots;
 static datetime lastTradeTime = NULL;
 
 //+------------------------------------------------------------------+
@@ -134,11 +133,11 @@ void OnDeinit(const int reason)
 void OnTick()
   {
 //---
-   if (Time[0] == lastTradeTime) return;
-   
-   lastTradeTime = Time[0];
-   
    if (emergencyExit() && abortInEmergency) return;
+   
+   if (Time[0] == lastTradeTime) return;   
+   lastTradeTime = Time[0];   
+   
    scale();
    ENTRYSIGNAL entry = entrySignal();
    
@@ -170,7 +169,7 @@ int sell() {
    
    //position sizing
    double size = currentLots;
-   if (filterInfo.currentCountOfOpenPositions > 0) {
+   if (filterInfo.currentCountOfOpenPositions > 0 && filterInfo.currentCountOfOpenPositions <= maxPositions) {
       size = MathPow(martingaleFactor,filterInfo.currentCountOfOpenPositions)*currentLots;
    }
    
@@ -178,15 +177,9 @@ int sell() {
    if (filterInfo.martingaleDistance < 0.0) {
       if (pyramide) size = currentLots; else size = 0.0;
    }
-
-   //limit max size      
-   double totalSize = filterInfo.currentSizeOfOpenPositions + size;
-   if (totalSize > currentMaxLots) {
-      size = currentMaxLots - filterInfo.currentSizeOfOpenPositions;
-      totalSize = currentMaxLots;
-   }
-   
    if (size == 0) return ticket;
+   
+   double totalSize = filterInfo.currentSizeOfOpenPositions + size;
    
    double totalTarget = (filterInfo.pointsToRecover + tpPoints)* currentLots / totalSize;
    double tp = filterInfo.entry - (totalTarget * _Point);
@@ -239,15 +232,9 @@ int buy() {
       if (pyramide) size = currentLots; else size = 0.0;
    }   
    
-   //limit max size 
-   double totalSize = filterInfo.currentSizeOfOpenPositions + size;
-   if (totalSize > currentMaxLots) {
-      size = currentMaxLots - filterInfo.currentSizeOfOpenPositions;
-      totalSize = currentMaxLots;
-   }
-   
    if (size == 0.0) return ticket;
    
+   double totalSize = filterInfo.currentSizeOfOpenPositions + size;
    double totalTarget = (filterInfo.pointsToRecover + tpPoints) * currentLots / totalSize;
    double tp = filterInfo.entry + (totalTarget * _Point);
    
@@ -314,11 +301,9 @@ void scale() {
       if (factor<1) factor = 1;
       currentLots = NormalizeDouble(factor * lots,_Digits);
       if (currentLots<lots) currentLots = lots;
-      currentMaxLots = NormalizeDouble(factor * maxLots,_Digits);
-      if (currentMaxLots < maxLots) currentMaxLots = maxLots;
    }
    
-   if (tracelevel>=2) PrintFormat("scale() < exit: lots=%.2f, maxlots=%.2f",currentLots,currentMaxLots);
+   if (tracelevel>=2) PrintFormat("scale() < exit: lots=%.2f",currentLots);
 }
 
 ENTRYSIGNAL entrySignal() {
