@@ -29,6 +29,7 @@ struct FilterInfo {
 input string label0 = "" ; //+--- admin ---+
 input int    myMagic = 1;
 input int    tracelevel = 2;
+input bool   backtest = true; //display balance and equity in chart
 input string chartLabel = "RSI grid";
 
 input string label1 = "" ; //+--- entry signal ---+
@@ -137,6 +138,8 @@ void OnTick()
    
    if (Time[0] == lastTradeTime) return;   
    lastTradeTime = Time[0];   
+   
+   if (backtest) Comment("balance: ", AccountBalance(), ", equity: ", AccountEquity());
    
    scale();
    ENTRYSIGNAL entry = entrySignal();
@@ -266,7 +269,7 @@ int buy() {
 }
 
 bool emergencyExit() {
-   if (!aborted) {
+   if (!aborted || !abortInEmergency) {
       if (AccountEquity() / AccountBalance() < emergencyExitRatio) { 
          Print("Emergency");
          for (int i=shortTickets.Total(); i>=0; i--) {
@@ -301,6 +304,9 @@ void scale() {
       if (factor<1) factor = 1;
       currentLots = NormalizeDouble(factor * lots,_Digits);
       if (currentLots<lots) currentLots = lots;
+      
+      double maxLots = MarketInfo(_Symbol,MODE_MAXLOT) / MathPow(martingaleFactor,maxPositions);
+      if (currentLots > maxLots) currentLots = maxLots;
    }
    
    if (tracelevel>=2) PrintFormat("scale() < exit: lots=%.2f",currentLots);
