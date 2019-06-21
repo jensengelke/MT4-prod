@@ -75,6 +75,7 @@ bool aborted = false;
 
 static double currentLots = lots;
 static datetime lastTradeTime = NULL;
+static double lastRsiPrev = -1.0;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -167,8 +168,11 @@ void OnTick()
 
    if (emergencyExit() && abortInEmergency) return;
    
-   if (Time[0] == lastTradeTime) return;   
-   lastTradeTime = Time[0];   
+   double rsiPrev = iRSI(Symbol(),PERIOD_CURRENT,rsiPeriod,PRICE_CLOSE,1);
+   if (lastRsiPrev == rsiPrev) return;
+   lastRsiPrev = rsiPrev;
+   //if (Time[0] == lastTradeTime) return;   
+   //lastTradeTime = Time[0];   
    
    if (backtest) Comment("balance: ", AccountBalance(), ", equity: ", AccountEquity());
    
@@ -201,7 +205,12 @@ int sell() {
    
    //exit if too close to current positions
    if (filterInfo.currentCountOfOpenPositions > 0 
-      && (martingaleMinDistance * filterInfo.currentCountOfOpenPositions) > MathAbs(filterInfo.martingaleDistance)) return ticket;
+      && (martingaleMinDistance * filterInfo.currentCountOfOpenPositions) > MathAbs(filterInfo.martingaleDistance)) {
+      if (tracelevel>=2) PrintFormat("I0021 not opening new short position: too close %.5f, minDistance=%.5f",
+         MathAbs(filterInfo.martingaleDistance),
+         martingaleMinDistance * filterInfo.currentCountOfOpenPositions);         
+      return ticket;
+   }
    
    //position sizing
    double size = currentLots;
@@ -254,7 +263,12 @@ int buy() {
    
    //exit if too close to current positions
    if (filterInfo.currentCountOfOpenPositions> 0 
-      && (martingaleMinDistance * filterInfo.currentCountOfOpenPositions) > MathAbs(filterInfo.martingaleDistance)) return ticket;
+      && (martingaleMinDistance * filterInfo.currentCountOfOpenPositions) > MathAbs(filterInfo.martingaleDistance)) {
+      if (tracelevel>=2) PrintFormat("I0022 not opening new long position: too close %.5f, minDistance=%.5f",
+         MathAbs(filterInfo.martingaleDistance),
+         martingaleMinDistance * filterInfo.currentCountOfOpenPositions);
+      return ticket;
+   }
    
      
    //postion sizing 
@@ -355,14 +369,23 @@ ENTRYSIGNAL entrySignal() {
    
    double rsi = iRSI(Symbol(),PERIOD_CURRENT,rsiPeriod,PRICE_CLOSE,1);
    double rsiPrev = iRSI(Symbol(),PERIOD_CURRENT,rsiPeriod,PRICE_CLOSE,2);
+   double rsiBefore = iRSI(Symbol(),PERIOD_CURRENT,rsiPeriod,PRICE_CLOSE,3);
    
-   if (tracelevel>=2) PrintFormat("I0003 entrySignal 2: RSI[1]=%.2f, RSI[2]=%.2f",rsi,rsiPrev);
+   if (tracelevel>=2) PrintFormat("I0003 entrySignal 2: RSI[1]=%.2f, RSI[2]=%.2f, RSI[3]=%.2f",rsi,rsiPrev,rsiBefore);
    
-   if (rsiPrev > rsiHighThreshold && rsi < rsiHighThreshold) signal = ENTRY_SHORT;
-   if (rsiPrev < rsiLowThreshold && rsi > rsiLowThreshold)   signal = ENTRY_LONG;
+   //TODO: working around timing issue by also considering t-2
+   if ((rsiPrev > rsiHighThreshold || rsiBefore > rsiHighThreshold) && rsi < rsiHighThreshold) {
+      signal = ENTRY_SHORT;
+      if (tracelevel>=2) PrintFormat("I0020 entrySignal() < exit: signal=SHORT");
+   }
+   if ((rsiPrev < rsiLowThreshold || rsiBefore < rsiLowThreshold) && rsi > rsiLowThreshold){
+      signal = ENTRY_LONG;
+      if (tracelevel>=2) PrintFormat("I0020 entrySignal() < exit: signal=LONG");
+   }
+      
    
    
-   if (tracelevel>=2) PrintFormat("entrySignal() < exit: signal=",signal);
+   if (tracelevel>=2) PrintFormat("entrySignal() < exit");
    return signal;
 }
 
@@ -411,7 +434,7 @@ FilterInfo assessShort() {
       filterInfo.martingaleDistance = (filterInfo.entry - filterInfo.lowestEntry) / _Point;
    }
    
-   if (tracelevel>=2) PrintFormat("I0004 assessLong() lowest=%.5f,highest=%.5f,entry=%.5f,dist=%.5f", filterInfo.lowestEntry, filterInfo.highestEntry, filterInfo.entry, filterInfo.martingaleDistance);
+   if (tracelevel>=2) PrintFormat("I0004 assessShort() lowest=%.5f,highest=%.5f,entry=%.5f,dist=%.5f", filterInfo.lowestEntry, filterInfo.highestEntry, filterInfo.entry, filterInfo.martingaleDistance);
     
    
    if (tracelevel>=2) PrintFormat("assessShort() < exit: count=%i", filterInfo.currentCountOfOpenPositions);
@@ -494,7 +517,11 @@ void considerCosts() {
          
          shortLots += OrderLots();
          openShortCost += OrderCommission(); 
-         openShortCost += (-1 * OrderSwap()); //negative OrderSwap() is cost
+         if (OrderSwap() > 0) {
+            openShortCost -= OrderSwap(); //positive OrderSwap() is profit
+         } else {
+            openShortCost += OrderSwap(); //negative OrderSwap() is cost
+         }
       }
    }
    
@@ -513,7 +540,12 @@ void considerCosts() {
          if (c.GetSwap() != (-1*OrderSwap()) && tracelevel>=2) {
             PrintFormat("I0008 Swap not considered: %.2f (ticket: %i)",OrderSwap(),OrderTicket());
          }
-         consideredCostShort += c.GetCommission() + c.GetSwap();
+         consideredCostShort += c.GetCommission();
+         if (c.GetSwap() > 0) {
+            consideredCostShort -= c.GetSwap(); //positive OrderSwap() is profit
+         } else {
+            consideredCostShort += c.GetSwap(); //negative OrderSwap() is cost
+         }
       } else {
          costsShort.Delete(i);
       }
@@ -549,7 +581,7 @@ void considerCosts() {
          for (int i=costsShort.Total()-1;i>=0;i--) {
             CCost *c = costsShort.At(i);
             if (OrderSelect(c.GetTicket(),SELECT_BY_TICKET)) {
-               c.SetSwap(-1 * OrderSwap());
+               c.SetSwap(OrderSwap());
                c.SetCommission(OrderCommission());
                if (tracelevel>=2) PrintFormat("I0012 short cost tracking updated for ticket %i with swap %.2f and commission %.2f", c.GetTicket(),c.GetSwap(),c.GetCommission());
             }
@@ -572,8 +604,12 @@ void considerCosts() {
          }
          
          longLots += OrderLots();
-         openLongCost += OrderCommission(); 
-         openLongCost += (-1 * OrderSwap()); //negative OrderSwap() is cost
+         openLongCost += OrderCommission();
+         if ( OrderSwap() > 0) {   
+            openLongCost -= OrderSwap(); //positive OrderSwap() is profit
+         } else {
+            openLongCost += OrderSwap(); //negative OrderSwap() is cost
+         }
       }
    }
    
@@ -593,7 +629,13 @@ void considerCosts() {
          if (c.GetSwap() != (-1 * OrderSwap()) && tracelevel>=2) {
             PrintFormat("I0014 Swap not considered: %.2f (ticket: %i)",OrderSwap(),OrderTicket());
          }
-         consideredCostLong += c.GetCommission() + c.GetSwap();
+         consideredCostLong += c.GetCommission();
+         
+         if (c.GetSwap() > 0.0) {
+            consideredCostLong -= c.GetSwap(); //positive swap is profit
+         } else {
+            consideredCostLong += c.GetSwap(); //negative swap is cost
+         }
       } else {
          costsShort.Delete(i);
       }
@@ -619,7 +661,11 @@ void considerCosts() {
                if (!OrderModify(OrderTicket(),0,OrderStopLoss(),OrderTakeProfit()+points,0,clrGreen)) {
                   PrintFormat("E0015");
                } else {
-                  PrintFormat("I0017 Long OrderModified to consider costs, ticket: %i, old tp=%.5f, new tp=%.5f", OrderTicket(), oldTP, OrderTakeProfit());
+                  if (OrderSelect(OrderTicket(),SELECT_BY_TICKET)) {
+                     PrintFormat("I0017 Long OrderModified to consider costs, ticket: %i, old tp=%.5f, new tp=%.5f", OrderTicket(), oldTP, OrderTakeProfit());
+                  } else {
+                     PrintFormat("I0019 Cannot re-select for trace.");
+                  }
                }
                
             }
@@ -628,7 +674,7 @@ void considerCosts() {
          for (int i=costsLong.Total()-1;i>=0;i--) {
             CCost *c = costsLong.At(i);
             if (OrderSelect(c.GetTicket(),SELECT_BY_TICKET)) {
-               c.SetSwap(-1 * OrderSwap());
+               c.SetSwap(OrderSwap());
                c.SetCommission(OrderCommission());
                if (tracelevel>=2) PrintFormat("I0018 long cost tracking updated for ticket %i with swap %.2f and commission %.2f", c.GetTicket(),c.GetSwap(),c.GetCommission());
             }
