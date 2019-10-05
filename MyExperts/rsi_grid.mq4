@@ -434,7 +434,7 @@ FilterInfo assessShort() {
       filterInfo.martingaleDistance = (filterInfo.entry - filterInfo.lowestEntry) / _Point;
    }
    
-   if (tracelevel>=2) PrintFormat("I0004 assessShort() lowest=%.5f,highest=%.5f,entry=%.5f,dist=%.5f", filterInfo.lowestEntry, filterInfo.highestEntry, filterInfo.entry, filterInfo.martingaleDistance);
+   if (tracelevel>=2) PrintFormat("I0004 assessShort() lowest=%.5f,highest=%.5f,entry=%.5f,dist=%.5f, currentCountOfOpenPositions=%i", filterInfo.lowestEntry, filterInfo.highestEntry, filterInfo.entry, filterInfo.martingaleDistance, filterInfo.currentCountOfOpenPositions);
     
    
    if (tracelevel>=2) PrintFormat("assessShort() < exit: count=%i", filterInfo.currentCountOfOpenPositions);
@@ -486,7 +486,7 @@ FilterInfo assessLong() {
    if (filterInfo.highestEntry > 0.0 && filterInfo.highestEntry < filterInfo.entry) {
       filterInfo.martingaleDistance = (filterInfo.highestEntry - filterInfo.entry) / _Point; 
    }
-   if (tracelevel>=2) PrintFormat("I0005 assessLong() lowest=%.5f,highest=%.5f,entry=%.5f,dist=%.5f", filterInfo.lowestEntry, filterInfo.highestEntry, filterInfo.entry, filterInfo.martingaleDistance);
+   if (tracelevel>=2) PrintFormat("I0005 assessLong() lowest=%.5f,highest=%.5f,entry=%.5f,dist=%.5f, currentCountOfOpenPositions=%i", filterInfo.lowestEntry, filterInfo.highestEntry, filterInfo.entry, filterInfo.martingaleDistance, filterInfo.currentCountOfOpenPositions);
    
    
    if (tracelevel>=2) PrintFormat("assessLong() < exit: dist=%.2f", filterInfo.martingaleDistance);
